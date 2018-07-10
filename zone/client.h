@@ -249,7 +249,7 @@ public:
 	//abstract virtual function implementations required by base abstract class
 	virtual bool Death(Mob* killerMob, int32 damage, uint16 spell_id, EQEmu::skills::SkillType attack_skill);
 	virtual void Damage(Mob* from, int32 damage, uint16 spell_id, EQEmu::skills::SkillType attack_skill, bool avoidable = true, int8 buffslot = -1, bool iBuffTic = false, eSpecialAttacks special = eSpecialAttacks::None);
-	virtual bool Attack(Mob* other, int Hand = EQEmu::inventory::slotPrimary, bool FromRiposte = false, bool IsStrikethrough = false, bool IsFromSpell = false,
+	virtual bool Attack(Mob* other, int Hand = EQEmu::invslot::slotPrimary, bool FromRiposte = false, bool IsStrikethrough = false, bool IsFromSpell = false,
 			ExtraAttackOptions *opts = nullptr);
 	virtual bool HasRaid() { return (GetRaid() ? true : false); }
 	virtual bool HasGroup() { return (GetGroup() ? true : false); }
@@ -871,7 +871,7 @@ public:
 	void QSSwapItemAuditor(MoveItem_Struct* move_in, bool postaction_call = false);
 	void PutLootInInventory(int16 slot_id, const EQEmu::ItemInstance &inst, ServerLootItem_Struct** bag_item_data = 0);
 	bool AutoPutLootInInventory(EQEmu::ItemInstance& inst, bool try_worn = false, bool try_cursor = true, ServerLootItem_Struct** bag_item_data = 0);
-	bool SummonItem(uint32 item_id, int16 charges = -1, uint32 aug1 = 0, uint32 aug2 = 0, uint32 aug3 = 0, uint32 aug4 = 0, uint32 aug5 = 0, uint32 aug6 = 0, bool attuned = false, uint16 to_slot = EQEmu::inventory::slotCursor, uint32 ornament_icon = 0, uint32 ornament_idfile = 0, uint32 ornament_hero_model = 0);
+	bool SummonItem(uint32 item_id, int16 charges = -1, uint32 aug1 = 0, uint32 aug2 = 0, uint32 aug3 = 0, uint32 aug4 = 0, uint32 aug5 = 0, uint32 aug6 = 0, bool attuned = false, uint16 to_slot = EQEmu::invslot::slotCursor, uint32 ornament_icon = 0, uint32 ornament_idfile = 0, uint32 ornament_hero_model = 0);
 	void SetStats(uint8 type,int16 set_val);
 	void IncStats(uint8 type,int16 increase_val);
 	void DropItem(int16 slot_id, bool recurse = true);
@@ -1001,16 +1001,17 @@ public:
 	// Task System Methods
 	void LoadClientTaskState();
 	void RemoveClientTaskState();
-	void SendTaskActivityComplete(int TaskID, int ActivityID, int TaskIndex, int TaskIncomplete=1);
-	void SendTaskFailed(int TaskID, int TaskIndex);
+	void SendTaskActivityComplete(int TaskID, int ActivityID, int TaskIndex, TaskType type, int TaskIncomplete=1);
+	void SendTaskFailed(int TaskID, int TaskIndex, TaskType type);
 	void SendTaskComplete(int TaskIndex);
+	inline ClientTaskState *GetTaskState() const { return taskstate; }
 
-	inline void CancelTask(int TaskIndex) { if(taskstate) taskstate->CancelTask(this, TaskIndex); }
+	inline void CancelTask(int TaskIndex, TaskType type) { if(taskstate) taskstate->CancelTask(this, TaskIndex, type); }
 	inline bool SaveTaskState() { return (taskmanager ? taskmanager->SaveClientState(this, taskstate) : false); }
 	inline bool IsTaskStateLoaded() { return taskstate != nullptr; }
 	inline bool IsTaskActive(int TaskID) { return (taskstate ? taskstate->IsTaskActive(TaskID) : false); }
 	inline bool IsTaskActivityActive(int TaskID, int ActivityID) { return (taskstate ? taskstate->IsTaskActivityActive(TaskID, ActivityID) : false); }
-	inline ActivityState GetTaskActivityState(int index, int ActivityID) { return (taskstate ? taskstate->GetTaskActivityState(index, ActivityID) : ActivityHidden); }
+	inline ActivityState GetTaskActivityState(TaskType type, int index, int ActivityID) { return (taskstate ? taskstate->GetTaskActivityState(type, index, ActivityID) : ActivityHidden); }
 	inline void UpdateTaskActivity(int TaskID, int ActivityID, int Count, bool ignore_quest_update = false) { if (taskstate) taskstate->UpdateTaskActivity(this, TaskID, ActivityID, Count, ignore_quest_update); }
 	inline void ResetTaskActivity(int TaskID, int ActivityID) { if(taskstate) taskstate->ResetTaskActivity(this, TaskID, ActivityID); }
 	inline void UpdateTasksOnKill(int NPCTypeID) { if(taskstate) taskstate->UpdateTasksOnKill(this, NPCTypeID); }
@@ -1019,6 +1020,7 @@ public:
 	inline bool UpdateTasksOnSpeakWith(int NPCTypeID) { if(taskstate) return taskstate->UpdateTasksOnSpeakWith(this, NPCTypeID); else return false; }
 	inline bool UpdateTasksOnDeliver(std::list<EQEmu::ItemInstance*>& Items, int Cash, int NPCTypeID) { if (taskstate) return taskstate->UpdateTasksOnDeliver(this, Items, Cash, NPCTypeID); else return false; }
 	inline void TaskSetSelector(Mob *mob, int TaskSetID) { if(taskmanager) taskmanager->TaskSetSelector(this, taskstate, mob, TaskSetID); }
+	inline void TaskQuestSetSelector(Mob *mob, int count, int *tasks) { if(taskmanager) taskmanager->TaskQuestSetSelector(this, taskstate, mob, count, tasks); }
 	inline void EnableTask(int TaskCount, int *TaskList) { if(taskstate) taskstate->EnableTask(CharacterID(), TaskCount, TaskList); }
 	inline void DisableTask(int TaskCount, int *TaskList) { if(taskstate) taskstate->DisableTask(CharacterID(), TaskCount, TaskList); }
 	inline bool IsTaskEnabled(int TaskID) { return (taskstate ? taskstate->IsTaskEnabled(TaskID) : false); }
@@ -1034,9 +1036,9 @@ public:
 	inline void CancelAllTasks() { if(taskstate) taskstate->CancelAllTasks(this); }
 	inline int GetActiveTaskCount() { return (taskstate ? taskstate->GetActiveTaskCount() : 0); }
 	inline int GetActiveTaskID(int index) { return (taskstate ? taskstate->GetActiveTaskID(index) : -1); }
-	inline int GetTaskStartTime(int index) { return (taskstate ? taskstate->GetTaskStartTime(index) : -1); }
-	inline bool IsTaskActivityCompleted(int index, int ActivityID) { return (taskstate ? taskstate->IsTaskActivityCompleted(index, ActivityID) : false); }
-	inline int GetTaskActivityDoneCount(int ClientTaskIndex, int ActivityID) { return (taskstate ? taskstate->GetTaskActivityDoneCount(ClientTaskIndex, ActivityID) :0); }
+	inline int GetTaskStartTime(TaskType type, int index) { return (taskstate ? taskstate->GetTaskStartTime(type, index) : -1); }
+	inline bool IsTaskActivityCompleted(TaskType type, int index, int ActivityID) { return (taskstate ? taskstate->IsTaskActivityCompleted(type, index, ActivityID) : false); }
+	inline int GetTaskActivityDoneCount(TaskType type, int ClientTaskIndex, int ActivityID) { return (taskstate ? taskstate->GetTaskActivityDoneCount(type, ClientTaskIndex, ActivityID) :0); }
 	inline int GetTaskActivityDoneCountFromTaskID(int TaskID, int ActivityID) { return (taskstate ? taskstate->GetTaskActivityDoneCountFromTaskID(TaskID, ActivityID) :0); }
 	inline int ActiveTasksInSet(int TaskSet) { return (taskstate ? taskstate->ActiveTasksInSet(TaskSet) :0); }
 	inline int CompletedTasksInSet(int TaskSet) { return (taskstate ? taskstate->CompletedTasksInSet(TaskSet) :0); }

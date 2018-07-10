@@ -2149,7 +2149,7 @@ bool QuestManager::createBot(const char *name, const char *lastname, uint8 level
 void QuestManager::taskselector(int taskcount, int *tasks) {
 	QuestManagerCurrentQuestVars();
 	if(RuleB(TaskSystem, EnableTaskSystem) && initiator && owner && taskmanager)
-		taskmanager->SendTaskSelector(initiator, owner, taskcount, tasks);
+		initiator->TaskQuestSetSelector(owner, taskcount, tasks);
 }
 void QuestManager::enabletask(int taskcount, int *tasks) {
 	QuestManagerCurrentQuestVars();
@@ -2478,12 +2478,12 @@ int QuestManager::collectitems(uint32 item_id, bool remove)
 	int quantity = 0;
 	int slot_id;
 
-	for (slot_id = EQEmu::legacy::GENERAL_BEGIN; slot_id <= EQEmu::legacy::GENERAL_END; ++slot_id)
+	for (slot_id = EQEmu::invslot::GENERAL_BEGIN; slot_id <= EQEmu::invslot::GENERAL_END; ++slot_id)
 	{
 		quantity += collectitems_processSlot(slot_id, item_id, remove);
 	}
 
-	for (slot_id = EQEmu::legacy::GENERAL_BAGS_BEGIN; slot_id <= EQEmu::legacy::GENERAL_BAGS_END; ++slot_id)
+	for (slot_id = EQEmu::invbag::GENERAL_BAGS_BEGIN; slot_id <= EQEmu::invbag::GENERAL_BAGS_END; ++slot_id)
 	{
 		quantity += collectitems_processSlot(slot_id, item_id, remove);
 	}
