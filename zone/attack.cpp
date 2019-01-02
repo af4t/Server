@@ -33,6 +33,8 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include "zone.h"
 #include "lua_parser.h"
 #include "fastmath.h"
+#include "mob.h"
+
 
 #include <assert.h>
 #include <stdio.h>
@@ -2666,12 +2668,6 @@ void Mob::AddToHateList(Mob* other, uint32 hate /*= 0*/, int32 damage /*= 0*/, b
 			else {
 				hate *= RuleR(Aggro, TunnelVisionAggroMod);
 			}
-		}
-	}
-
-	if (IsNPC() && CastToNPC()->IsUnderwaterOnly() && zone->HasWaterMap()) {
-		if (!zone->watermap->InLiquid(glm::vec3(other->GetPosition()))) {
-			return;
 		}
 	}
 	// first add self
@@ -5450,7 +5446,7 @@ void Mob::DoOffHandAttackRounds(Mob *target, ExtraAttackOptions *opts)
 	// For now, SPECATK_QUAD means innate DW when Combat:UseLiveCombatRounds is true
 	if ((GetSpecialAbility(SPECATK_INNATE_DW) ||
 		(RuleB(Combat, UseLiveCombatRounds) && GetSpecialAbility(SPECATK_QUAD))) ||
-		GetEquipment(EQEmu::textures::weaponSecondary) != 0) {
+		GetEquippedItemFromTextureSlot(EQEmu::textures::weaponSecondary) != 0) {
 		if (CheckDualWield()) {
 			Attack(target, EQEmu::invslot::slotSecondary, false, false, false, opts);
 			if (CanThisClassDoubleAttack() && GetLevel() > 35 && CheckDoubleAttack()) {
