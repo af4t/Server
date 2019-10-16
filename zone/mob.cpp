@@ -1736,7 +1736,11 @@ void Mob::SendIllusionPacket(
 	uint32 new_drakkin_tattoo;
 	uint32 new_drakkin_details;
 
-	race = (in_race) ? in_race : GetBaseRace();
+	race = in_race;
+	if (race == 0)
+		{
+		race = (use_model) ? use_model : GetBaseRace();
+		}
 
 	if (in_gender != 0xFF)
 		{
@@ -3203,6 +3207,10 @@ void Mob::SetTarget(Mob *mob)
 		if (this->CastToClient()->admin > 200) {
 			this->DisplayInfo(mob);
 		}
+
+#ifdef BOTS
+		CastToClient()->SetBotPrecombat(false); // Any change in target will nullify this flag (target == mob checked above)
+#endif
 	}
 
 	if (IsPet() && GetOwner() && GetOwner()->IsClient()) {
