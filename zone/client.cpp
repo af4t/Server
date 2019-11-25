@@ -266,6 +266,7 @@ Client::Client(EQStreamInterface* ieqs)
 	PendingTranslocate = false;
 	PendingSacrifice = false;
 	controlling_boat_id = 0;
+	controlled_mob_id = 0;
 
 	if (!RuleB(Character, PerCharacterQglobalMaxLevel) && !RuleB(Character, PerCharacterBucketMaxLevel)) {
 		SetClientMaxLevel(0);
@@ -7692,6 +7693,14 @@ FACTION_VALUE Client::GetReverseFactionCon(Mob* iOther) {
 		return FACTION_INDIFFERENT;
 
 	return GetFactionLevel(CharacterID(), 0, GetFactionRace(), GetClass(), GetDeity(), iOther->GetPrimaryFaction(), iOther);
+}
+
+bool Client::ReloadCharacterFaction(Client *c, uint32 facid, uint32 charid)
+{
+	if (database.SetCharacterFactionLevel(charid, facid, 0, 0, factionvalues))
+		return true;
+	else
+		return false;
 }
 
 //o--------------------------------------------------------------
