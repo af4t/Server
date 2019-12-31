@@ -83,6 +83,7 @@ Bot::Bot(NPCType *npcTypeData, Client* botOwner) : NPC(npcTypeData, nullptr, glm
 	SetPauseAI(false);
 
 	m_alt_combat_hate_timer.Start(250);
+	m_auto_defend_timer.Disable();
 	//m_combat_jitter_timer.Disable();
 	//SetCombatJitterFlag(false);
 	SetGuardFlag(false);
@@ -180,6 +181,7 @@ Bot::Bot(uint32 botID, uint32 botOwnerCharacterID, uint32 botSpellsID, double to
 	SetPauseAI(false);
 
 	m_alt_combat_hate_timer.Start(250);
+	m_auto_defend_timer.Disable();
 	//m_combat_jitter_timer.Disable();
 	//SetCombatJitterFlag(false);
 	SetGuardFlag(false);
@@ -236,8 +238,157 @@ Bot::Bot(uint32 botID, uint32 botOwnerCharacterID, uint32 botSpellsID, double to
 
 	LoadAAs();
 
-	if (!database.botdb.LoadBuffs(this) && bot_owner)
+	// copied from client CompleteConnect() handler - watch for problems
+	// (may have to move to post-spawn location if certain buffs still don't process correctly)
+	if (database.botdb.LoadBuffs(this) && bot_owner) {
+
+		//reapply some buffs
+		uint32 buff_count = GetMaxTotalSlots();
+		for (uint32 j1 = 0; j1 < buff_count; j1++) {
+			if (!IsValidSpell(buffs[j1].spellid))
+				continue;
+
+			const SPDat_Spell_Struct& spell = spells[buffs[j1].spellid];
+
+			int NimbusEffect = GetNimbusEffect(buffs[j1].spellid);
+			if (NimbusEffect) {
+				if (!IsNimbusEffectActive(NimbusEffect))
+					SendSpellEffect(NimbusEffect, 500, 0, 1, 3000, true);
+			}
+
+			for (int x1 = 0; x1 < EFFECT_COUNT; x1++) {
+				switch (spell.effectid[x1]) {
+				case SE_IllusionCopy:
+				case SE_Illusion: {
+					if (spell.base[x1] == -1) {
+						if (gender == 1)
+							gender = 0;
+						else if (gender == 0)
+							gender = 1;
+						SendIllusionPacket(GetRace(), gender, 0xFF, 0xFF);
+					}
+					else if (spell.base[x1] == -2) // WTF IS THIS
+					{
+						if (GetRace() == 128 || GetRace() == 130 || GetRace() <= 12)
+							SendIllusionPacket(GetRace(), GetGender(), spell.base2[x1], spell.max[x1]);
+					}
+					else if (spell.max[x1] > 0)
+					{
+						SendIllusionPacket(spell.base[x1], 0xFF, spell.base2[x1], spell.max[x1]);
+					}
+					else
+					{
+						SendIllusionPacket(spell.base[x1], 0xFF, 0xFF, 0xFF);
+					}
+					switch (spell.base[x1]) {
+					case OGRE:
+						SendAppearancePacket(AT_Size, 9);
+						break;
+					case TROLL:
+						SendAppearancePacket(AT_Size, 8);
+						break;
+					case VAHSHIR:
+					case BARBARIAN:
+						SendAppearancePacket(AT_Size, 7);
+						break;
+					case HALF_ELF:
+					case WOOD_ELF:
+					case DARK_ELF:
+					case FROGLOK:
+						SendAppearancePacket(AT_Size, 5);
+						break;
+					case DWARF:
+						SendAppearancePacket(AT_Size, 4);
+						break;
+					case HALFLING:
+					case GNOME:
+						SendAppearancePacket(AT_Size, 3);
+						break;
+					default:
+						SendAppearancePacket(AT_Size, 6);
+						break;
+					}
+					break;
+				}
+				//case SE_SummonHorse: {
+				//	SummonHorse(buffs[j1].spellid);
+				//	//hasmount = true;	//this was false, is that the correct thing?
+				//	break;
+				//}
+				case SE_Silence:
+				{
+					Silence(true);
+					break;
+				}
+				case SE_Amnesia:
+				{
+					Amnesia(true);
+					break;
+				}
+				case SE_DivineAura:
+				{
+					invulnerable = true;
+					break;
+				}
+				case SE_Invisibility2:
+				case SE_Invisibility:
+				{
+					invisible = true;
+					SendAppearancePacket(AT_Invis, 1);
+					break;
+				}
+				case SE_Levitate:
+				{
+					if (!zone->CanLevitate())
+					{
+						//if (!GetGM())
+						//{
+							SendAppearancePacket(AT_Levitate, 0);
+							BuffFadeByEffect(SE_Levitate);
+							//Message(Chat::Red, "You can't levitate in this zone.");
+						//}
+					}
+					else {
+						SendAppearancePacket(AT_Levitate, 2);
+					}
+					break;
+				}
+				case SE_InvisVsUndead2:
+				case SE_InvisVsUndead:
+				{
+					invisible_undead = true;
+					break;
+				}
+				case SE_InvisVsAnimals:
+				{
+					invisible_animals = true;
+					break;
+				}
+				case SE_AddMeleeProc:
+				case SE_WeaponProc:
+				{
+					AddProcToWeapon(GetProcID(buffs[j1].spellid, x1), false, 100 + spells[buffs[j1].spellid].base2[x1], buffs[j1].spellid, buffs[j1].casterlevel);
+					break;
+				}
+				case SE_DefensiveProc:
+				{
+					AddDefensiveProc(GetProcID(buffs[j1].spellid, x1), 100 + spells[buffs[j1].spellid].base2[x1], buffs[j1].spellid);
+					break;
+				}
+				case SE_RangedProc:
+				{
+					AddRangedProc(GetProcID(buffs[j1].spellid, x1), 100 + spells[buffs[j1].spellid].base2[x1], buffs[j1].spellid);
+					break;
+				}
+				}
+			}
+		}
+
+		
+	}
+	else {
 		bot_owner->Message(Chat::Red, "&s for '%s'", BotDatabase::fail::LoadBuffs(), GetCleanName());
+	}
 
 	CalcBotStats(false);
 	hp_regen = CalcHPRegen();
@@ -282,15 +433,61 @@ void Bot::SetBotSpellID(uint32 newSpellID) {
 }
 
 void  Bot::SetSurname(std::string bot_surname) {
+
 	_surname = bot_surname.substr(0, 31);
+
+	if (spawned) {
+
+		auto outapp = new EQApplicationPacket(OP_GMLastName, sizeof(GMLastName_Struct));
+		GMLastName_Struct* gmn = (GMLastName_Struct*)outapp->pBuffer;
+
+		strcpy(gmn->name, GetCleanName());
+		strcpy(gmn->gmname, GetCleanName());
+		strcpy(gmn->lastname, GetSurname().c_str());
+		gmn->unknown[0] = 1;
+		gmn->unknown[1] = 1;
+		gmn->unknown[2] = 1;
+		gmn->unknown[3] = 1;
+
+		entity_list.QueueClients(this, outapp);
+		safe_delete(outapp);
+	}
 }
 
 void  Bot::SetTitle(std::string bot_title) {
-		_title = bot_title.substr(0, 31);
+
+	_title = bot_title.substr(0, 31);
+
+	if (spawned) {
+
+		auto outapp = new EQApplicationPacket(OP_SetTitleReply, sizeof(SetTitleReply_Struct));
+		SetTitleReply_Struct* strs = (SetTitleReply_Struct*)outapp->pBuffer;
+
+		strs->is_suffix = 0;
+		strn0cpy(strs->title, _title.c_str(), sizeof(strs->title));
+		strs->entity_id = GetID();
+
+		entity_list.QueueClients(this, outapp, false);
+		safe_delete(outapp);
+	}
 }
 
 void  Bot::SetSuffix(std::string bot_suffix) {
-		_suffix = bot_suffix.substr(0, 31);
+
+	_suffix = bot_suffix.substr(0, 31);
+
+	if (spawned) {
+
+		auto outapp = new EQApplicationPacket(OP_SetTitleReply, sizeof(SetTitleReply_Struct));
+		SetTitleReply_Struct* strs = (SetTitleReply_Struct*)outapp->pBuffer;
+
+		strs->is_suffix = 1;
+		strn0cpy(strs->title, _suffix.c_str(), sizeof(strs->title));
+		strs->entity_id = GetID();
+
+		entity_list.QueueClients(this, outapp, false);
+		safe_delete(outapp);
+	}
 }
 
 uint32 Bot::GetBotArcheryRange() {
@@ -1457,7 +1654,7 @@ int32 Bot::GenerateBaseHitPoints() {
 }
 
 void Bot::LoadAAs() {
-	int maxAAExpansion = RuleI(Bots, AAExpansion); //get expansion to get AAs up to
+	
 	aa_ranks.clear();
 
 	int id = 0;
@@ -2284,7 +2481,7 @@ void Bot::SetTarget(Mob* mob) {
 }
 
 void Bot::SetStopMeleeLevel(uint8 level) {
-	if (IsCasterClass(GetClass()) || IsSpellFighterClass(GetClass()))
+	if (IsCasterClass(GetClass()) || IsHybridClass(GetClass()))
 		_stopMeleeLevel = level;
 	else
 		_stopMeleeLevel = 255;
@@ -2307,15 +2504,16 @@ void Bot::SetHoldMode() {
 }
 
 // AI Processing for the Bot object
+
+constexpr float MAX_CASTER_DISTANCE[PLAYER_CLASS_COUNT] = {
+    0, (34 * 34), (24 * 24), (28 * 28), (26 * 26), (42 * 42), 0, (30 * 30), 0, (38 * 38), (54 * 54), (48 * 48), (52 * 52), (50 * 50), (32 * 32), 0
+//  W      C          P          R          S          D      M      B      R      S          N          W          M          E          B      B
+//  A      L          A          N          H          R      N      R      O      H          E          I          A          N          S      E
+//  R      R          L          G          D          U      K      D      G      M          C          Z          G          C          T      R
+};
+
 void Bot::AI_Process()
 {
-	constexpr float MAX_CASTER_DISTANCE[PLAYER_CLASS_COUNT] = {
-		0, (34 * 34), (24 * 24), (28 * 28), (26 * 26), (42 * 42), 0, 0, 0, (38 * 38), (54 * 54), (48 * 48), (52 * 52), (50 * 50), (30 * 30), 0
-	//  W      C          P          R          S          D      M  B  R      S          N          W          M          E          B      B
-	//  A      L          A          N          H          R      N  R  O      H          E          I          A          N          S      E
-	//  R      R          L          G          D          U      K  D  G      M          C          Z          G          C          T      R
-	};
-
 #define TEST_COMBATANTS() if (!GetTarget() || GetAppearance() == eaDead) { return; }
 #define PULLING_BOT (GetPullingFlag() || GetReturningFlag())
 #define NOT_PULLING_BOT (!GetPullingFlag() && !GetReturningFlag())
@@ -2627,7 +2825,7 @@ void Bot::AI_Process()
 
 				return;
 			}
-			else if (HasTargetReflection()) {
+			else if (GetTarget()->GetHateList().size()) {
 
 				WipeHateList();
 				SetTarget(nullptr);
@@ -2711,14 +2909,14 @@ void Bot::AI_Process()
 			if (find_target) {
 
 				if (IsRooted()) {
-					SetTarget(hate_list.GetClosestEntOnHateList(this));
+					SetTarget(hate_list.GetClosestEntOnHateList(this, true));
 				}
 				else {
 
 					// This will keep bots on target for now..but, future updates will allow for rooting/stunning
 					SetTarget(hate_list.GetEscapingEntOnHateList(leash_owner, leash_distance));
 					if (!GetTarget()) {
-						SetTarget(hate_list.GetEntWithMostHateOnList(this));
+						SetTarget(hate_list.GetEntWithMostHateOnList(this, nullptr, true));
 					}
 				}
 			}
@@ -3192,7 +3390,7 @@ void Bot::AI_Process()
 					BotRangedAttack(tar);
 				}
 			}
-			else if (!IsBotArcher() && (IsBotNonSpellFighter() || GetLevel() < GetStopMeleeLevel())) {
+			else if (!IsBotArcher() && GetLevel() < GetStopMeleeLevel()) {
 
 				// We can't fight if we don't have a target, are stun/mezzed or dead..
 				// Stop attacking if the target is enraged
@@ -3400,9 +3598,15 @@ void Bot::AI_Process()
 
 		// This is as close as I could get without modifying the aggro mechanics and making it an expensive process...
 		// 'class Client' doesn't make use of hate_list...
-		if (bot_owner->GetAggroCount() && bot_owner->GetBotOption(Client::booAutoDefend)) {
+		if (RuleB(Bots, AllowOwnerOptionAutoDefend) && bot_owner->GetBotOption(Client::booAutoDefend)) {
 
-			if (RuleB(Bots, AllowOwnerOptionAutoDefend)) {
+			if (!m_auto_defend_timer.Enabled()) {
+
+				m_auto_defend_timer.Start(zone->random.Int(250, 1250)); // random timer to simulate 'awareness' (cuts down on scanning overhead)
+				return;
+			}
+			
+			if (m_auto_defend_timer.Check() && bot_owner->GetAggroCount()) {
 
 				if (NOT_HOLDING && NOT_PASSIVE) {
 
@@ -3420,7 +3624,7 @@ void Bot::AI_Process()
 							}
 
 							auto hater = entity_list.GetMob(hater_iter.spawn_id);
-							if (hater && DistanceSquared(hater->GetPosition(), bot_owner->GetPosition()) <= leash_distance) {
+							if (hater && !hater->IsMezzed() && DistanceSquared(hater->GetPosition(), bot_owner->GetPosition()) <= leash_distance) {
 
 								// This is roughly equivilent to npc attacking a client pet owner
 								AddToHateList(hater, 1);
@@ -3431,6 +3635,8 @@ void Bot::AI_Process()
 									GetPet()->AddToHateList(hater, 1);
 									GetPet()->SetTarget(hater);
 								}
+
+								m_auto_defend_timer.Disable();
 
 								return;
 							}
@@ -4726,9 +4932,9 @@ bool Bot::Death(Mob *killerMob, int32 damage, uint16 spell_id, EQEmu::skills::Sk
 	Mob *my_owner = GetBotOwner();
 	if (my_owner && my_owner->IsClient() && my_owner->CastToClient()->GetBotOption(Client::booDeathMarquee)) {
 		if (killerMob)
-			my_owner->CastToClient()->SendMarqueeMessage(Chat::Yellow, 510, 0, 1000, 3000, StringFormat("%s has been slain by %s", GetCleanName(), killerMob->GetCleanName()));
+			my_owner->CastToClient()->SendMarqueeMessage(Chat::Red, 510, 0, 1000, 3000, StringFormat("%s has been slain by %s", GetCleanName(), killerMob->GetCleanName()));
 		else
-			my_owner->CastToClient()->SendMarqueeMessage(Chat::Yellow, 510, 0, 1000, 3000, StringFormat("%s has been slain", GetCleanName()));
+			my_owner->CastToClient()->SendMarqueeMessage(Chat::Red, 510, 0, 1000, 3000, StringFormat("%s has been slain", GetCleanName()));
 	}
 
 	Mob *give_exp = hate_list.GetDamageTopOnHateList(this);
@@ -8703,15 +8909,21 @@ void Bot::CalcBotStats(bool showtext) {
 		GetBotOwner()->Message(Chat::Yellow, "Updating %s...", GetCleanName());
 	}
 
-	if(!IsValidRaceClassCombo()) {
+	// this code is annoying since many classes change their name and illusions change the race id
+	/*if(!IsValidRaceClassCombo()) {
 		GetBotOwner()->Message(Chat::Yellow, "A %s - %s bot was detected. Is this Race/Class combination allowed?.", GetRaceIDName(GetRace()), GetClassIDName(GetClass(), GetLevel()));
 		GetBotOwner()->Message(Chat::Yellow, "Previous Bots Code releases did not check Race/Class combinations during create.");
 		GetBotOwner()->Message(Chat::Yellow, "Unless you are experiencing heavy lag, you should delete and remake this bot.");
-	}
+	}*/
 
 	if(GetBotOwner()->GetLevel() != GetLevel())
 		SetLevel(GetBotOwner()->GetLevel());
 
+	for (int sindex = 0; sindex <= EQEmu::skills::HIGHEST_SKILL; ++sindex) {
+		skills[sindex] = database.GetSkillCap(GetClass(), (EQEmu::skills::SkillType)sindex, GetLevel());
+	}
+
+	LoadAAs();
 	GenerateSpecialAttacks();
 
 	if(showtext) {
@@ -8982,6 +9194,20 @@ Bot* EntityList::GetBotByBotName(std::string botName) {
 			Bot* tempBot = *botListItr;
 			if(tempBot && std::string(tempBot->GetName()) == botName) {
 				Result = tempBot;
+				break;
+			}
+		}
+	}
+	return Result;
+}
+
+Client* EntityList::GetBotOwnerByBotEntityID(uint16 entityID) {
+	Client* Result = nullptr;
+	if (entityID > 0) {
+		for (std::list<Bot*>::iterator botListItr = bot_list.begin(); botListItr != bot_list.end(); ++botListItr) {
+			Bot* tempBot = *botListItr;
+			if (tempBot && tempBot->GetID() == entityID) {
+				Result = tempBot->GetBotOwner()->CastToClient();
 				break;
 			}
 		}

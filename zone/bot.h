@@ -383,6 +383,7 @@ public:
 	void EquipBot(std::string* errorMessage);
 	bool CheckLoreConflict(const EQEmu::ItemData* item);
 	virtual void UpdateEquipmentLight() { m_Light.Type[EQEmu::lightsource::LightEquipment] = m_inv.FindBrightestLightType(); m_Light.Level[EQEmu::lightsource::LightEquipment] = EQEmu::lightsource::TypeToLevel(m_Light.Type[EQEmu::lightsource::LightEquipment]); }
+	const EQEmu::InventoryProfile& GetBotInv() const { return m_inv; }
 
 	// Static Class Methods	
 	//static void DestroyBotRaidObjects(Client* client);	// Can be removed after bot raids are dumped
@@ -692,6 +693,7 @@ private:
 	
 	Timer m_evade_timer; // can be moved to pTimers at some point
 	Timer m_alt_combat_hate_timer;
+	Timer m_auto_defend_timer;
 	//Timer m_combat_jitter_timer;
 	//bool m_combat_jitter_flag;
 	bool m_guard_flag;

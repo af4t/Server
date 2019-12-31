@@ -107,6 +107,11 @@ namespace Logs {
 		Emergency,
 		Alert,
 		Notice,
+		AIScanClose,
+		AIYellForHelp,
+		AICastBeneficialClose,
+		AoeCast,
+		EntityManagement,
 		MaxCategoryID /* Don't Remove this */
 	};
 
@@ -172,7 +177,12 @@ namespace Logs {
 		"Critical",
 		"Emergency",
 		"Alert",
-		"Notice"
+		"Notice",
+		"AI Scan Close",
+		"AI Yell For Help",
+		"AI Cast Beneficial Close",
+		"AOE Cast",
+		"Entity Management",
 	};
 }
 
@@ -278,6 +288,16 @@ public:
 	 * @param f
 	 */
 	void SetConsoleHandler(std::function<void(uint16 debug_level, uint16 log_type, const std::string&)> f) { on_log_console_hook = f; }
+
+	/**
+	 * Silence console logging
+	 */
+	void SilenceConsoleLogging();
+
+	/**
+	 * Turn on all console logging
+	 */
+	void EnableConsoleLogging();
 
 private:
 
