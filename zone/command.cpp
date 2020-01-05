@@ -2503,6 +2503,7 @@ void command_grid(Client *c, const Seperator *sep)
 	else {
 		c->Message(Chat::White, "Usage: #grid add/delete grid_num wandertype pausetype");
 		c->Message(Chat::White, "Usage: #grid max - displays the highest grid ID used in this zone (for add)");
+		c->Message(Chat::White, "Usage: #grid show - displays wp nodes as boxes");
 	}
 }
 
@@ -4252,10 +4253,15 @@ void command_corpsefix(Client *c, const Seperator *sep)
 
 void command_reloadworld(Client *c, const Seperator *sep)
 {
-	c->Message(Chat::White, "Reloading quest cache and repopping zones worldwide.");
+	int world_repop = atoi(sep->arg[1]);
+	if (world_repop == 0)
+		c->Message(Chat::White, "Reloading quest cache worldwide.");
+	else
+		c->Message(Chat::White, "Reloading quest cache and repopping zones worldwide.");
+	
 	auto pack = new ServerPacket(ServerOP_ReloadWorld, sizeof(ReloadWorld_Struct));
 	ReloadWorld_Struct* RW = (ReloadWorld_Struct*) pack->pBuffer;
-	RW->Option = ((atoi(sep->arg[1]) == 1) ? 1 : 0);
+	RW->Option = world_repop;
 	worldserver.SendPacket(pack);
 	safe_delete(pack);
 }
