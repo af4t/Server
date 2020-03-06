@@ -93,7 +93,8 @@ Mob::Mob(
 	uint8 in_handtexture,
 	uint8 in_legtexture,
 	uint8 in_feettexture,
-	uint16 in_usemodel
+	uint16 in_usemodel,
+	bool in_always_aggro
 ) :
 	attack_timer(2000),
 	attack_dw_timer(2000),
@@ -275,6 +276,7 @@ Mob::Mob(
 	qglobal           = 0;
 	spawned           = false;
 	rare_spawn        = false;
+	always_aggro      = in_always_aggro;
 
 	InitializeBuffSlots();
 
