@@ -906,6 +906,15 @@ bool QuestManager::isdisctome(int item_id) {
 	return(true);
 }
 
+std::string QuestManager::getspellname(uint32 spell_id) {
+	if (!IsValidSpell(spell_id)) {
+		return "INVALID SPELL ID IN GETSPELLNAME";
+	}
+
+	std::string spell_name = GetSpellName(spell_id);
+	return spell_name;
+}
+
 void QuestManager::safemove() {
 	QuestManagerCurrentQuestVars();
 	if (initiator && initiator->IsClient())
@@ -2432,6 +2441,16 @@ bool QuestManager::istaskappropriate(int task) {
 	return false;
 }
 
+std::string QuestManager::gettaskname(uint32 task_id) {
+	QuestManagerCurrentQuestVars();
+
+	if (RuleB(TaskSystem, EnableTaskSystem)) {
+		return taskmanager->GetTaskName(task_id);
+	}
+
+	return std::string();
+}
+
 void QuestManager::clearspawntimers() {
 	if(!zone)
         return;
@@ -2696,6 +2715,16 @@ const char* QuestManager::varlink(char* perltext, int item_id) {
 	return perltext;
 }
 
+std::string QuestManager::getitemname(uint32 item_id) {
+	const EQEmu::ItemData* item_data = database.GetItem(item_id);
+	if (!item_data) {
+		return "INVALID ITEM ID IN GETITEMNAME";
+	}
+
+	std::string item_name = item_data->Name;
+	return item_name;
+}
+
 uint16 QuestManager::CreateInstance(const char *zone, int16 version, uint32 duration)
 {
 	QuestManagerCurrentQuestVars();
@@ -2835,6 +2864,10 @@ void QuestManager::RemoveFromInstance(uint16 instance_id)
 
 void QuestManager::RemoveFromInstanceByCharID(uint16 instance_id, uint32 char_id) {
 	database.RemoveClientFromInstance(instance_id, char_id);
+}
+
+bool QuestManager::CheckInstanceByCharID(uint16 instance_id, uint32 char_id) {
+	return database.CharacterInInstanceGroup(instance_id, char_id);
 }
 
 void QuestManager::RemoveAllFromInstance(uint16 instance_id)
