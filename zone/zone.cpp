@@ -857,12 +857,14 @@ void Zone::Shutdown(bool quiet)
 	while (!zone->npctable.empty()) {
 		itr = zone->npctable.begin();
 		delete itr->second;
+		itr->second = nullptr;
 		zone->npctable.erase(itr);
 	}
 
 	while (!zone->merctable.empty()) {
 		itr = zone->merctable.begin();
 		delete itr->second;
+		itr->second = nullptr;
 		zone->merctable.erase(itr);
 	}
 
@@ -872,6 +874,7 @@ void Zone::Shutdown(bool quiet)
 	while (!zone->ldon_trap_list.empty()) {
 		itr4 = zone->ldon_trap_list.begin();
 		delete itr4->second;
+		itr4->second = nullptr;
 		zone->ldon_trap_list.erase(itr4);
 	}
 	zone->ldon_trap_entry_list.clear();
@@ -950,6 +953,7 @@ Zone::Zone(uint32 in_zoneid, uint32 in_instanceid, const char* in_short_name)
 	default_ruleset = 0;
 
 	is_zone_time_localized = false;
+	process_mobs_while_empty = false;
 
 	loglevelvar = 0;
 	merchantvar = 0;
@@ -1707,6 +1711,7 @@ bool Zone::Depop(bool StartSpawnTimer) {
 	while(!npctable.empty()) {
 		itr = npctable.begin();
 		delete itr->second;
+		itr->second = nullptr;
 		npctable.erase(itr);
 	}
 
@@ -1723,6 +1728,7 @@ void Zone::ClearNPCTypeCache(int id) {
 		auto iter = npctable.begin();
 		while (iter != npctable.end()) {
 			delete iter->second;
+			iter->second = nullptr;
 			++iter;
 		}
 		npctable.clear();
@@ -1732,6 +1738,7 @@ void Zone::ClearNPCTypeCache(int id) {
 		while (iter != npctable.end()) {
 			if (iter->first == (uint32)id) {
 				delete iter->second;
+				iter->second = nullptr;
 				npctable.erase(iter);
 				return;
 			}
