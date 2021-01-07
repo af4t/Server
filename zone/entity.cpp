@@ -32,6 +32,7 @@
 #include "../common/features.h"
 #include "../common/guilds.h"
 
+#include "dynamiczone.h"
 #include "guild_mgr.h"
 #include "petitions.h"
 #include "quest_parser_collection.h"
@@ -2692,6 +2693,36 @@ void EntityList::RemoveAuraFromMobs(Mob *aura)
 }
 
 /**
+ * The purpose of this system is so that we cache relevant entities that are "close"
+ *
+ * In general; it becomes incredibly expensive to run zone-wide checks against every single mob in the zone when in reality
+ * we only care about entities closest to us
+ *
+ * A very simple example of where this is relevant is Aggro, the below example is skewed because the overall implementation
+ * of Aggro was also tweaked in conjunction with close lists. We also scan more aggressively when entities are moving (1-6 seconds)
+ * versus 60 seconds when idle. We also have entities that are moving add themselves to those closest to them so that their close
+ * lists remain always up to date
+ *
+ * Before: Aggro checks for NPC to Client aggro | (40 clients in zone) x (525 npcs) x 2 (times a second) = 2,520,000 checks a minute
+ * After: Aggro checks for NPC to Client aggro | (40 clients in zone) x (20-30 npcs) x 2 (times a second) = 144,000 checks a minute (This is actually far less today)
+ *
+ * Places in the code where this logic makes a huge impact
+ *
+ * Aggro checks (zone wide -> close)
+ * Aura processing (zone wide -> close)
+ * AE Taunt (zone wide -> close)
+ * AOE Spells (zone wide -> close)
+ * Bard Pulse AOE (zone wide -> close)
+ * Mass Group Buff (zone wide -> close)
+ * AE Attack (zone wide -> close)
+ * Packet QueueCloseClients (zone wide -> close)
+ * Check Close Beneficial Spells (Buffs; should I heal other npcs) (zone wide -> close)
+ * AI Yell for Help (NPC Assist other NPCs) (zone wide -> close)
+ *
+ * All of the above makes a tremendous impact on the bottom line of cpu cycle performance because we run an order of magnitude
+ * less checks by focusing our hot path logic down to a very small subset of relevant entities instead of looping an entire
+ * entity list (zone wide)
+ *
  * @param close_mobs
  * @param scanning_mob
  */
@@ -4208,7 +4239,7 @@ void EntityList::ForceGroupUpdate(uint32 gid)
 	}
 }
 
-void EntityList::SendGroupLeave(uint32 gid, const char *name)
+void EntityList::SendGroupLeave(uint32 gid, const char *name, bool checkleader)
 {
 	auto it = client_list.begin();
 	while (it != client_list.end()) {
@@ -4224,13 +4255,39 @@ void EntityList::SendGroupLeave(uint32 gid, const char *name)
 					gj->action = groupActLeave;
 					strcpy(gj->yourname, c->GetName());
 					Mob *Leader = g->GetLeader();
-					if (Leader)
+					if (Leader) {
 						Leader->CastToClient()->GetGroupAAs(&gj->leader_aas);
+					}
 					c->QueuePacket(outapp);
 					safe_delete(outapp);
-					g->DelMemberOOZ(name);
-					if (g->IsLeader(c) && c->IsLFP())
+					g->DelMemberOOZ(name, checkleader);
+					if (g->IsLeader(c) && c->IsLFP()) {
 						c->UpdateLFP();
+					}
+				}
+			}
+		}
+		++it;
+	}
+}
+
+void EntityList::SendGroupLeader(uint32 gid, const char *lname, const char *oldlname)
+{
+	auto it = client_list.begin();
+	while (it != client_list.end()) {
+		if (it->second){
+			Group *g = nullptr;
+			g = it->second->GetGroup();
+			if (g) {
+				if (g->GetID() == gid) {
+					EQApplicationPacket* outapp = new EQApplicationPacket(OP_GroupUpdate,sizeof(GroupJoin_Struct));
+					GroupJoin_Struct* gj = (GroupJoin_Struct*) outapp->pBuffer;
+					gj->action = groupActMakeLeader;
+					strcpy(gj->membername, lname);
+					strcpy(gj->yourname, oldlname);
+					it->second->QueuePacket(outapp);
+					Log(Logs::Detail, Logs::Group, "SendGroupLeader(): Entity loop leader update packet sent to: %s .", it->second->GetName());
+					safe_delete(outapp);
 				}
 			}
 		}
@@ -4253,9 +4310,9 @@ void EntityList::SendGroupJoin(uint32 gid, const char *name)
 					gj->action = groupActJoin;
 					strcpy(gj->yourname, it->second->GetName());
 					Mob *Leader = g->GetLeader();
-					if (Leader)
+					if (Leader) {
 						Leader->CastToClient()->GetGroupAAs(&gj->leader_aas);
-
+					}
 					it->second->QueuePacket(outapp);
 					safe_delete(outapp);
 				}
@@ -5189,6 +5246,8 @@ void EntityList::ReloadMerchants() {
  * If we have a distance requested that is greater than our scanning distance
  * then we return the full list
  *
+ * See comments @EntityList::ScanCloseMobs for system explanation
+ *
  * @param mob
  * @param distance
  * @return
@@ -5202,3 +5261,65 @@ std::unordered_map<uint16, Mob *> &EntityList::GetCloseMobList(Mob *mob, float d
 	return mob_list;
 }
 
+void EntityList::GateAllClientsToSafeReturn()
+{
+	DynamicZone dz;
+	if (zone)
+	{
+		dz = zone->GetDynamicZone();
+
+		LogDynamicZones(
+			"Sending all clients in zone: [{}] instance: [{}] to dz safereturn or bind",
+			zone->GetZoneID(), zone->GetInstanceID()
+		);
+	}
+
+	for (const auto& client_list_iter : client_list)
+	{
+		if (client_list_iter.second)
+		{
+			// falls back to gating clients to bind if dz invalid
+			client_list_iter.second->GoToDzSafeReturnOrBind(dz);
+		}
+	}
+}
+
+int EntityList::MovePlayerCorpsesToGraveyard(bool force_move_from_instance)
+{
+	if (!zone)
+	{
+		return 0;
+	}
+
+	int moved_count = 0;
+
+	for (auto it = corpse_list.begin(); it != corpse_list.end();)
+	{
+		bool moved = false;
+		if (it->second && it->second->IsPlayerCorpse())
+		{
+			if (zone->HasGraveyard())
+			{
+				moved = it->second->MovePlayerCorpseToGraveyard();
+			}
+			else if (force_move_from_instance && zone->GetInstanceID() != 0)
+			{
+				moved = it->second->MovePlayerCorpseToNonInstance();
+			}
+		}
+
+		if (moved)
+		{
+			safe_delete(it->second);
+			free_ids.push(it->first);
+			it = corpse_list.erase(it);
+			++moved_count;
+		}
+		else
+		{
+			++it;
+		}
+	}
+
+	return moved_count;
+}
